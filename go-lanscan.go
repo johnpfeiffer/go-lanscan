@@ -5,17 +5,22 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 const timeoutSeconds = 2
 const outboundPort = "80"
 
-// go run *.go -remote "4.4.4.4" -subnet "/25"
+// nc -lvp 22
+// go run *.go -remote "4.4.4.4" -subnet "/30" -port 22
 
 func main() {
 	remoteIPParameter := flag.String("remote", "8.8.8.8", "The remote IP Address to use to detect outbound connectivity")
 	subnetParameter := flag.String("subnet", "", "The CIDR subnet to search, the default is to use the host outbound ip subnet")
+	port := flag.Int("port", 22, "The port to check")
 	flag.Parse()
 
 	myOutIP, _ := GetOutboundIPAddress(*remoteIPParameter + ":" + outboundPort)
@@ -31,7 +36,7 @@ func main() {
 		_, subnet, err = net.ParseCIDR(myOutIP + *subnetParameter)
 	}
 
-	fmt.Println("Searching subnet:", subnet)
+	fmt.Println("Searching subnet:", subnet, "for hosts on port", *port)
 	// TODO check if invalid subnet override
 	firstIP := GetFirstIPAddress(*subnet)
 	fmt.Printf("%v subnet.Contains(%v): %v \n", subnet, firstIP, subnet.Contains(firstIP))
@@ -44,7 +49,57 @@ func main() {
 	}
 	fmt.Println(subnet, "has", len(addresses), "addresses from", addresses[0], "to", addresses[len(addresses)-1])
 
+	max := len(addresses)
+	found := make(chan IPCheckResult, max)
+
+	var wg sync.WaitGroup
+	wg.Add(max)
+	for _, a := range addresses {
+		fmt.Println("checking", a)
+		// https://golang.org/doc/faq#closures_and_goroutines
+		go func(ip string) {
+			checkIP(ip, *port, found)
+			wg.Done()
+		}(a)
+	}
+	wg.Wait()
+	close(found)
+	displayResults(found)
 	fmt.Println("done")
+}
+
+func displayResults(c <-chan IPCheckResult) {
+	fmt.Println("searched", len(c), "hosts and found:")
+	var found []IPCheckResult
+	for v := range c {
+		if v.found {
+			found = append(found, v)
+		} else {
+			// DEBUG: fmt.Println(v)
+		}
+	}
+	for _, v := range found {
+		fmt.Println(v)
+	}
+}
+
+// IPCheckResult is a wrapper to send results back via a channel
+type IPCheckResult struct {
+	found   bool
+	address string
+	port    int
+}
+
+// check a remote ip adress and port for tcp connectivity
+func checkIP(address string, port int, c chan IPCheckResult) {
+	result := IPCheckResult{found: false, address: address, port: port}
+	remoteIPAndPort := address + ":" + strconv.Itoa(port)
+	conn, err := net.DialTimeout("tcp", remoteIPAndPort, time.Duration(timeoutSeconds)*time.Second)
+	if err == nil {
+		defer conn.Close()
+		result.found = true
+	}
+	c <- result
 }
 
 // GetHostSubnet gets the subnet of the ip address from the current host https://golang.org/pkg/net/#ParseCIDR
