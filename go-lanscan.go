@@ -21,10 +21,11 @@ func main() {
 	remoteIPParameter := flag.String("remote", "8.8.8.8", "The remote IP Address to use to detect outbound connectivity")
 	subnetParameter := flag.String("subnet", "", "The CIDR subnet to search, the default is to use the host outbound ip subnet")
 	port := flag.Int("port", 22, "The port to check")
+	verbose := flag.Bool("verbose", false, "Verbose output (i.e. every host checked)")
 	flag.Parse()
 
 	myOutIP, _ := GetOutboundIPAddress(*remoteIPParameter + ":" + outboundPort)
-	fmt.Println("Current outbound IP Address:", myOutIP)
+        output("Current outbound IP Address: "+ myOutIP, *verbose)
 	var subnet *net.IPNet
 	var err error
 	if *subnetParameter == "" {
@@ -36,18 +37,18 @@ func main() {
 		_, subnet, err = net.ParseCIDR(myOutIP + *subnetParameter)
 	}
 
-	fmt.Println("Searching subnet:", subnet, "for hosts on port", *port)
+	output(fmt.Sprintf("Searching subnet: %s for hosts on port %d", subnet, *port), *verbose)
 	// TODO check if invalid subnet override
 	firstIP := GetFirstIPAddress(*subnet)
-	fmt.Printf("%v subnet.Contains(%v): %v \n", subnet, firstIP, subnet.Contains(firstIP))
+	output(fmt.Sprintf("%v subnet.Contains(%v): %v", subnet, firstIP, subnet.Contains(firstIP)), *verbose)
 	lastIP := GetLastIP(*subnet)
-	fmt.Printf("%v subnet.Contains(%v): %v \n", subnet, lastIP, subnet.Contains(lastIP))
+	output(fmt.Sprintf("%v subnet.Contains(%v): %v", subnet, lastIP, subnet.Contains(firstIP)), *verbose)
 
 	addresses, err := GetAllSubnetAddresses(*subnet)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(subnet, "has", len(addresses), "addresses from", addresses[0], "to", addresses[len(addresses)-1])
+	output(subnet.String()+" has "+strconv.Itoa(len(addresses))+" addresses from "+addresses[0]+" to "+addresses[len(addresses)-1], *verbose)
 
 	max := len(addresses)
 	found := make(chan IPCheckResult, max)
@@ -55,7 +56,7 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(max)
 	for _, a := range addresses {
-		fmt.Println("checking", a)
+		output("checking "+a, *verbose)
 		// https://golang.org/doc/faq#closures_and_goroutines
 		go func(ip string) {
 			checkIP(ip, *port, found)
@@ -64,12 +65,19 @@ func main() {
 	}
 	wg.Wait()
 	close(found)
-	displayResults(found)
-	fmt.Println("done")
+	displayResults(found, *verbose)
+	output("done", *verbose)
 }
 
-func displayResults(c <-chan IPCheckResult) {
-	fmt.Println("searched", len(c), "hosts and found:")
+func output(s string, verbose bool) {
+	if verbose {
+		fmt.Println(s)
+	}
+}
+
+// TODO: just return results so as to correctly separate concerns of work and display
+func displayResults(c <-chan IPCheckResult, verbose bool) {
+	output("searched "+strconv.Itoa(len(c))+" hosts and found:", verbose)
 	var found []IPCheckResult
 	for v := range c {
 		if v.found {
