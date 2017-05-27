@@ -1,14 +1,17 @@
 image: foupfeiffer/gcloud-sdk
 
-# placeholder until I get the real thing working with Docker and Go
-
 pipelines:
   default:
     - step:
         script:
+          - export PATH=$PATH:/usr/local/go/bin
+          - go build *.go
           - export CLOUDSDK_CORE_DISABLE_PROMPTS=1
           - echo "key = '${GOOGLE_API_KEY}'" > api_key.py
           - echo ${GOOGLE_CLIENT_SECRET} > client-secret.json
           - gcloud auth activate-service-account --key-file client-secret.json
           - gcloud --verbosity=error app deploy app.yaml --promote
+
+# https://golang.org/cmd/go/#hdr-Compile_packages_and_dependencies
+# https://blog.john-pfeiffer.com/continuous-delivery-with-bitbucket-pipelines-and-google-app-engine-deployment-and-the-storageobjectslist-error/
 

@@ -22,7 +22,12 @@ func main() {
 	subnetParameter := flag.String("subnet", "", "The CIDR subnet to search, the default is to use the host outbound ip subnet")
 	port := flag.Int("port", 22, "The port to check")
 	verbose := flag.Bool("verbose", false, "Verbose output (i.e. every host checked)")
+        version := flag.Bool("version", false, "Output the version of this program")
 	flag.Parse()
+
+        if *version {
+                log.Fatal("go-lanscan version 0.3")
+        }
 
 	myOutIP, _ := GetOutboundIPAddress(*remoteIPParameter + ":" + outboundPort)
         output("Current outbound IP Address: "+ myOutIP, *verbose)

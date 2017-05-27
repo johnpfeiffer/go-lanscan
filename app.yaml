@@ -3,6 +3,11 @@ api_version: 1
 threadsafe: yes
 
 handlers:
+
+- url: /go-lanscan
+  static_files: go-lanscan
+  upload: go-lanscan
+
 - url: .*
   script: main.app
 
